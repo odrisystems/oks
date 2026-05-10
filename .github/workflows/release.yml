@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: oks-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -67,7 +71,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${tag}"
-          git push origin "refs/tags/${tag}"
+          echo "Pushing tag ${tag}..."
+          git push --porcelain --verbose origin "refs/tags/${tag}"
 
       - name: Update moving 'latest' tag
         shell: bash
