@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | b
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | bash -s -- --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | bash -s -- --version v0.0.0-nightly.20260510.120605.acfb8d87a258
 ```
 
 ## Usage
