@@ -9,16 +9,9 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: oks-release
-  cancel-in-progress: false
-
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      # Avoid Go toolchain auto-download races during parallel builds.
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,76 +23,19 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Create next semver tag (auto patch bump)
+      - name: Create release tag (v0.0.0-nightly.YYYYMMDD.HHMMSS.<sha>)
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
-          git fetch --tags --force
-
-          latest="$(
-            git tag -l 'v*.*.*' \
-              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-              | sort -V \
-              | tail -n 1
-          )"
-
-          if [[ -z "${latest}" ]]; then
-            latest="v0.0.0"
-          fi
-
-          ver="${latest#v}"
-          IFS='.' read -r major minor patch <<< "${ver}"
-          patch="$((patch + 1))"
-
-          # In case the workflow is re-run or multiple pushes happen quickly,
-          # keep bumping until we find a tag that doesn't exist.
-          while : ; do
-            tag="v${major}.${minor}.${patch}"
-            if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-              patch="$((patch + 1))"
-              continue
-            fi
-            break
-          done
-
+          sha="$(git rev-parse --short=12 HEAD)"
+          date_part="$(date -u +%Y%m%d)"
+          time_part="$(date -u +%H%M%S)"
+          tag="v0.0.0-nightly.${date_part}.${time_part}.${sha}"
           echo "TAG=${tag}" >> "$GITHUB_ENV"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${tag}"
-
-          echo "Creating tag ${tag} via GitHub API..."
-          gh api \
-            -X POST \
-            "repos/${GITHUB_REPOSITORY}/git/refs" \
-            -f "ref=refs/tags/${tag}" \
-            -f "sha=${GITHUB_SHA}"
-
-          # Ensure the tag exists locally for GoReleaser's git state.
-          git fetch --tags --force
-
-      - name: Update moving 'latest' tag
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "Updating moving 'latest' tag via GitHub API..."
-          if gh api -X GET "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" >/dev/null 2>&1; then
-            gh api \
-              -X PATCH \
-              "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" \
-              -f "sha=${GITHUB_SHA}" \
-              -f "force=true"
-          else
-            gh api \
-              -X POST \
-              "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f "ref=refs/tags/latest" \
-              -f "sha=${GITHUB_SHA}"
-          fi
-
-          git fetch --tags --force
+          git push origin "refs/tags/${tag}"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
