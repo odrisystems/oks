@@ -46,7 +46,17 @@ jobs:
           ver="${latest#v}"
           IFS='.' read -r major minor patch <<< "${ver}"
           patch="$((patch + 1))"
-          tag="v${major}.${minor}.${patch}"
+
+          # In case the workflow is re-run or multiple pushes happen quickly,
+          # keep bumping until we find a tag that doesn't exist.
+          while : ; do
+            tag="v${major}.${minor}.${patch}"
+            if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+              patch="$((patch + 1))"
+              continue
+            fi
+            break
+          done
 
           echo "TAG=${tag}" >> "$GITHUB_ENV"
           git config user.name "github-actions[bot]"
