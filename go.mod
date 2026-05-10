@@ -1,6 +1,6 @@
 module github.com/odrisystems/infrastructure/tools/oks
 
-go 1.23.0
+go 1.22.0
 
 require (
 	github.com/hashicorp/vault/api v1.20.0
