@@ -37,8 +37,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Ensure pushes use GITHUB_TOKEN credentials.
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git fetch --tags --force
 
           latest="$(
@@ -68,11 +66,17 @@ jobs:
           done
 
           echo "TAG=${tag}" >> "$GITHUB_ENV"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${tag}"
-          echo "Pushing tag ${tag}..."
-          git push --porcelain --verbose origin "refs/tags/${tag}"
+
+          echo "Creating tag ${tag} via GitHub API..."
+          gh api \
+            -X POST \
+            "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${tag}" \
+            -f "sha=${GITHUB_SHA}"
+
+          # Ensure the tag exists locally for GoReleaser's git state.
+          git fetch --tags --force
 
       - name: Update moving 'latest' tag
         shell: bash
@@ -80,11 +84,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f latest
-          git push --force origin "refs/tags/latest"
+          echo "Updating moving 'latest' tag via GitHub API..."
+          if gh api -X GET "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" >/dev/null 2>&1; then
+            gh api \
+              -X PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" \
+              -f "sha=${GITHUB_SHA}" \
+              -f "force=true"
+          else
+            gh api \
+              -X POST \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/tags/latest" \
+              -f "sha=${GITHUB_SHA}"
+          fi
+
+          git fetch --tags --force
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
