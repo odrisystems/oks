@@ -23,14 +23,28 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Create release tag (v0.0.0-nightly.YYYYMMDD.HHMMSS.<sha>)
+      - name: Create next semver tag (auto patch bump)
         shell: bash
         run: |
           set -euo pipefail
-          sha="$(git rev-parse --short=12 HEAD)"
-          date_part="$(date -u +%Y%m%d)"
-          time_part="$(date -u +%H%M%S)"
-          tag="v0.0.0-nightly.${date_part}.${time_part}.${sha}"
+          git fetch --tags --force
+
+          latest="$(
+            git tag -l 'v*.*.*' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n 1
+          )"
+
+          if [[ -z "${latest}" ]]; then
+            latest="v0.0.0"
+          fi
+
+          ver="${latest#v}"
+          IFS='.' read -r major minor patch <<< "${ver}"
+          patch="$((patch + 1))"
+          tag="v${major}.${minor}.${patch}"
+
           echo "TAG=${tag}" >> "$GITHUB_ENV"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

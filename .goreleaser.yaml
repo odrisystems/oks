@@ -33,4 +33,4 @@ checksum:
 
 release:
   draft: false
-  prerelease: "auto"
+  prerelease: "false"
