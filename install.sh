@@ -93,6 +93,8 @@ fi
 
 # Matches GoReleaser default archive naming with our config:
 #   oks_<version>_<os>_<arch>.<ext>
+# VERSION is a tag like v0.1.0 or v0.0.0-nightly....
+# Archive uses GoReleaser's .Version (tag without leading v).
 asset="${BIN_NAME}_${VERSION#v}_${os}_${arch}.${ext}"
 url="https://github.com/${REPO}/releases/download/${VERSION}/${asset}"
 
