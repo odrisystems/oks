@@ -36,6 +36,35 @@ func NewClient(addr string) (*api.Client, error) {
 	return client, nil
 }
 
+// ListKV2 lists secret names on a KV v2 mount. mount is the mount path, usually "clusters".
+func ListKV2(client *api.Client, mount string) ([]string, error) {
+	mount = strings.Trim(strings.TrimSpace(mount), "/")
+	if mount == "" {
+		mount = "clusters"
+	}
+	sec, err := client.Logical().List(mount + "/metadata")
+	if err != nil {
+		return nil, err
+	}
+	if sec == nil || sec.Data == nil {
+		return nil, nil
+	}
+	raw, ok := sec.Data["keys"].([]interface{})
+	if !ok {
+		return nil, errors.New("KV v2 list response missing keys")
+	}
+	names := make([]string, 0, len(raw))
+	for _, item := range raw {
+		name := strings.TrimSpace(stringify(item))
+		name = strings.Trim(name, "/")
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
 // ReadKV2 reads a KV v2 secret. path is the API path, for example clusters/data/name.
 func ReadKV2(client *api.Client, path string) (map[string]string, error) {
 	sec, err := client.Logical().Read(strings.TrimSpace(path))

@@ -55,12 +55,44 @@ func WriteFile(destPath, kubeYAML string) error {
 	return os.WriteFile(absDest, []byte(kubeYAML), 0o600)
 }
 
+// Activate makes the cluster the current context. namespace, when set, is written onto that context.
+// It returns the updated kubeconfig and the context name kubectl will use.
+func Activate(kubeYAML, clusterName, namespace string) (string, string, error) {
+	cfg, err := clientcmd.Load([]byte(kubeYAML))
+	if err != nil {
+		return "", "", fmt.Errorf("parse kubeconfig from Vault: %w", err)
+	}
+	name := pickContext(cfg, clusterName)
+	if name == "" {
+		return "", "", fmt.Errorf("kubeconfig has no context for cluster %s", clusterName)
+	}
+	ctx := cfg.Contexts[name]
+	if ctx == nil {
+		return "", "", fmt.Errorf("kubeconfig context %s is empty", name)
+	}
+	if ns := strings.TrimSpace(namespace); ns != "" {
+		ctx.Namespace = ns
+	}
+	cfg.CurrentContext = name
+	b, err := clientcmd.Write(*cfg)
+	if err != nil {
+		return "", "", err
+	}
+	return string(b), name, nil
+}
+
 // Merge updates only the cluster, user, and context names present in kubeYAML.
-// Other entries stay. When setCurrentContext is true, the incoming context becomes current.
-func Merge(destPath, kubeYAML string, setCurrentContext bool) error {
+// Other entries stay. The incoming current context becomes the kubeconfig current context.
+func Merge(destPath, kubeYAML string) error {
 	incoming, err := clientcmd.Load([]byte(kubeYAML))
 	if err != nil {
 		return fmt.Errorf("parse kubeconfig from Vault: %w", err)
+	}
+	if incoming.CurrentContext == "" {
+		incoming.CurrentContext = soleContextName(incoming)
+	}
+	if incoming.CurrentContext == "" {
+		return errors.New("kubeconfig has no current context")
 	}
 
 	absDest, err := filepath.Abs(destPath)
@@ -75,9 +107,6 @@ func Merge(destPath, kubeYAML string, setCurrentContext bool) error {
 		if err := os.MkdirAll(filepath.Dir(absDest), 0o700); err != nil {
 			return err
 		}
-		if setCurrentContext && incoming.CurrentContext == "" {
-			incoming.CurrentContext = soleContextName(incoming)
-		}
 		return clientcmd.WriteToFile(*incoming, absDest)
 	}
 
@@ -89,15 +118,15 @@ func Merge(destPath, kubeYAML string, setCurrentContext bool) error {
 		return fmt.Errorf("load existing kubeconfig: %w", err)
 	}
 
-	merged := overlay(starting, incoming, setCurrentContext)
+	merged := overlay(starting, incoming)
 	return clientcmd.ModifyConfig(pathOpts, *merged, false)
 }
 
-func overlay(base, incoming *clientcmdapi.Config, setCurrentContext bool) *clientcmdapi.Config {
+func overlay(base, incoming *clientcmdapi.Config) *clientcmdapi.Config {
 	out := clientcmdapi.NewConfig()
 	out.Preferences = base.Preferences
 	out.Extensions = base.Extensions
-	out.CurrentContext = base.CurrentContext
+	out.CurrentContext = incoming.CurrentContext
 
 	copyClusters(out.Clusters, base.Clusters)
 	copyAuth(out.AuthInfos, base.AuthInfos)
@@ -106,15 +135,33 @@ func overlay(base, incoming *clientcmdapi.Config, setCurrentContext bool) *clien
 	copyClusters(out.Clusters, incoming.Clusters)
 	copyAuth(out.AuthInfos, incoming.AuthInfos)
 	copyContexts(out.Contexts, incoming.Contexts)
+	return out
+}
 
-	if setCurrentContext && incoming.CurrentContext != "" {
-		out.CurrentContext = incoming.CurrentContext
-	} else if setCurrentContext {
-		if name := soleContextName(incoming); name != "" {
-			out.CurrentContext = name
+func pickContext(cfg *clientcmdapi.Config, clusterName string) string {
+	if ctx, ok := cfg.Contexts[clusterName]; ok && ctx != nil {
+		return clusterName
+	}
+	match := ""
+	for name, ctx := range cfg.Contexts {
+		if ctx == nil || ctx.Cluster != clusterName {
+			continue
+		}
+		if match != "" {
+			match = ""
+			break
+		}
+		match = name
+	}
+	if match != "" {
+		return match
+	}
+	if cfg.CurrentContext != "" {
+		if ctx, ok := cfg.Contexts[cfg.CurrentContext]; ok && ctx != nil {
+			return cfg.CurrentContext
 		}
 	}
-	return out
+	return soleContextName(cfg)
 }
 
 func copyClusters(dst, src map[string]*clientcmdapi.Cluster) {

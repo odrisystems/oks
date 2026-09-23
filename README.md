@@ -1,15 +1,15 @@
 # OKS (Odri Kubernetes Service)
 
-`oks` logs you into Vault in the browser with a username, password, and authenticator code, downloads one cluster kubeconfig, and writes it into your kubeconfig.
+`oks` logs you into Vault, lists clusters, and writes one cluster kubeconfig.
 
 ## Layout
 
 ```
 cmd/oks/            command entrypoint
-internal/cli/       flags and the login-then-write flow
-internal/auth/      Vault userpass browser login
+internal/cli/       auth login, cluster list, and kubeconfig commands
+internal/auth/      Vault userpass login and the saved token
 internal/cluster/   cluster name and clusters/data/<cluster> path
-internal/vaultkv/   Vault client and KV v2 reads
+internal/vaultkv/   Vault client and KV v2 list and read
 internal/kube/      merge, overwrite, and kubeconfig assembly
 ```
 
@@ -29,19 +29,22 @@ curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | b
 
 ## Usage
 
-Vault secret path defaults to:
-
-- `clusters/data/<cluster>`
-
-Example:
+Log in first. The default method is userpass, which opens a browser for the username, password, and authenticator code. The token is saved to `~/.config/oks/token`.
 
 ```bash
+oks auth login
+oks clusters
 oks -cluster kind-odri-cluster -namespace workspacepro-prod
-kubectl config use-context kind-odri-cluster
 kubectl get ns
 ```
 
-Vault address defaults to `https://vault.odrisystems.com`. Browser login uses the `userpass` mount (`-auth userpass`) and asks for the username, password, and authenticator code. Pass `-use-token` to skip the browser and use `VAULT_TOKEN` instead.
+That fetch writes the kubeconfig and switches kubectl to the cluster context.
+
+Vault address defaults to `https://vault.odrisystems.com`. The userpass mount is `userpass` (`oks auth login -auth userpass`).
+
+`oks auth login -method token` stores the current `VAULT_TOKEN` instead of opening a browser. `oks clusters` and `oks -cluster` accept `-use-token` to use `VAULT_TOKEN` for that one command.
+
+Vault secret path defaults to `clusters/data/<cluster>`.
 
 ### Vault secret formats
 
