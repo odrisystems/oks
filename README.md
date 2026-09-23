@@ -29,20 +29,23 @@ curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | b
 
 ## Usage
 
-Log in first. The default method is userpass, which opens a browser for the username, password, and authenticator code. The token is saved to `~/.config/oks/token`.
+Log in once. The browser asks for the username and password. The authenticator code is optional. The Vault token is saved to `~/.config/oks/token`, and later commands use it. A saved token that Vault still accepts does not open the browser again.
 
 ```bash
 oks auth login
-oks clusters
-oks -cluster kind-odri-cluster -namespace workspacepro-prod
+oks clusters --list
+oks clusters --get --cluster kind-odri-cluster --namespace workspacepro-prod
 kubectl get ns
 ```
 
-That fetch writes the kubeconfig and switches kubectl to the cluster context.
+`--get` writes the kubeconfig and switches kubectl to the cluster context. Optional flags on `--get` are `--namespace`, `--o`, `--path`, `--field`, and `--overwrite`.
 
-Vault address defaults to `https://vault.odrisystems.com`. The userpass mount is `userpass` (`oks auth login -auth userpass`).
+```bash
+oks clusters --add --cluster name --file ./kubeconfig
+oks clusters --delete --cluster name
+```
 
-`oks auth login -method token` stores the current `VAULT_TOKEN` instead of opening a browser. `oks clusters` and `oks -cluster` accept `-use-token` to use `VAULT_TOKEN` for that one command.
+Vault address defaults to `https://vault.odrisystems.com`. The userpass mount is `userpass` (`oks auth login --auth userpass`).
 
 Vault secret path defaults to `clusters/data/<cluster>`.
 

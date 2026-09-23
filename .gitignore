@@ -2,3 +2,5 @@
 *.exe
 
 dist/
+stitch_vault_kubernetes_login_redesign/
+*.zip

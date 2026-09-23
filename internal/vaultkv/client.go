@@ -65,6 +65,26 @@ func ListKV2(client *api.Client, mount string) ([]string, error) {
 	return names, nil
 }
 
+// WriteKV2 writes a KV v2 secret. path is the API path, for example clusters/data/name.
+func WriteKV2(client *api.Client, path string, data map[string]string) error {
+	payload := make(map[string]interface{}, len(data))
+	for k, v := range data {
+		payload[k] = v
+	}
+	_, err := client.Logical().Write(strings.TrimSpace(path), map[string]interface{}{
+		"data": payload,
+	})
+	return err
+}
+
+// DeleteKV2 removes every version of a KV v2 secret so it no longer appears in the list.
+func DeleteKV2(client *api.Client, mount, name string) error {
+	mount = strings.Trim(strings.TrimSpace(mount), "/")
+	name = strings.Trim(strings.TrimSpace(name), "/")
+	_, err := client.Logical().Delete(mount + "/metadata/" + name)
+	return err
+}
+
 // ReadKV2 reads a KV v2 secret. path is the API path, for example clusters/data/name.
 func ReadKV2(client *api.Client, path string) (map[string]string, error) {
 	sec, err := client.Logical().Read(strings.TrimSpace(path))

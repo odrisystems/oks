@@ -12,13 +12,13 @@ import (
 
 func authCommand(args []string) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintf(os.Stderr, "Usage: oks auth login [options]\n\n")
-		fmt.Fprintf(os.Stderr, "Log in to Vault and save the client token for later oks commands.\n")
-		fmt.Fprintf(os.Stderr, "The default method is userpass.\n")
 		if len(args) == 0 {
+			fmt.Fprintf(os.Stderr, "Usage: oks auth login [options]\n\n")
+			fmt.Fprintf(os.Stderr, "Log in to Vault and save the token for oks clusters.\n")
+			fmt.Fprintf(os.Stderr, "The default method is userpass.\n")
 			return 2
 		}
-		return 0
+		return loginCommand([]string{"-h"})
 	}
 	if args[0] != "login" {
 		fmt.Fprintf(os.Stderr, "error: unknown auth command %q\n\n", args[0])
@@ -36,7 +36,7 @@ func loginCommand(args []string) int {
 	vaultAddr := fs.String("vault-addr", "", "Vault address (default VAULT_ADDR or https://vault.odrisystems.com)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: oks auth login [options]\n\n")
-		fmt.Fprintf(os.Stderr, "Log in to Vault and save the client token. The default method is userpass.\n\n")
+		fmt.Fprintf(os.Stderr, "Log in to Vault and save the token. A valid saved login skips the browser. The default method is userpass.\n\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -52,8 +52,20 @@ func loginCommand(args []string) int {
 		return 1
 	}
 
+	methodName := strings.ToLower(strings.TrimSpace(*method))
+	if methodName == "userpass" {
+		if saved, err := auth.LoadToken(); err == nil {
+			client.SetToken(saved)
+			if _, err := client.Auth().Token().LookupSelf(); err == nil {
+				fmt.Fprintf(os.Stderr, "Already logged in to %s\n", client.Address())
+				return 0
+			}
+		}
+	}
+
+	client.ClearToken()
 	var token string
-	switch strings.ToLower(strings.TrimSpace(*method)) {
+	switch methodName {
 	case "userpass":
 		token, err = auth.UserpassLogin(client, *authMount)
 	case "token":
@@ -75,6 +87,6 @@ func loginCommand(args []string) int {
 		fmt.Fprintf(os.Stderr, "save token: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(os.Stderr, "Logged in to %s with %s. Token saved to %s\n", client.Address(), strings.ToLower(strings.TrimSpace(*method)), path)
+	fmt.Fprintf(os.Stderr, "Logged in to %s with %s. Token saved to %s\n", client.Address(), methodName, path)
 	return 0
 }

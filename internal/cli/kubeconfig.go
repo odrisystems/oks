@@ -1,59 +1,27 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/hashicorp/vault/api"
 	"github.com/odrisystems/infrastructure/tools/oks/internal/cluster"
 	"github.com/odrisystems/infrastructure/tools/oks/internal/kube"
 	"github.com/odrisystems/infrastructure/tools/oks/internal/vaultkv"
 )
 
-func kubeconfigCommand(args []string) int {
-	fs := flag.NewFlagSet("oks", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-
-	clusterName := fs.String("cluster", "", "Cluster name (required). Vault path defaults to clusters/data/<cluster>")
-	vaultAddr := fs.String("vault-addr", "", "Vault address (default VAULT_ADDR or https://vault.odrisystems.com)")
-	useToken := fs.Bool("use-token", false, "Use VAULT_TOKEN instead of the token from oks auth login")
-	mount := fs.String("mount", "", "KV v2 mount override (default clusters)")
-	vaultPath := fs.String("path", "", "KV v2 API path override, for example clusters/data/kind-odri-cluster")
-	namespace := fs.String("namespace", "", "Namespace to set on the kubeconfig context when the secret is structured fields")
-	field := fs.String("field", "kubeconfig", "Secret field that holds the kubeconfig YAML. Empty assembles server/token/CA fields")
-	outPath := fs.String("o", "", "Kubeconfig file to write. '-' prints YAML and does not merge. Empty uses KUBECONFIG or ~/.kube/config")
-	overwrite := fs.Bool("overwrite", false, "Replace the kubeconfig file. Default merges this cluster in and leaves other contexts alone")
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: oks -cluster <name> [options]\n\n")
-		fmt.Fprintf(os.Stderr, "Fetch one OKS kubeconfig. Run oks auth login first, or pass -use-token.\n\n")
-		fs.PrintDefaults()
-	}
-
-	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
-		}
+func getCredentials(client *api.Client, clusterName, vaultPath, namespace, field, outPath string, overwrite bool) int {
+	env, err := cluster.Lookup(clusterName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 2
 	}
 
-	env, err := cluster.Lookup(*clusterName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		fs.Usage()
-		return 2
-	}
-
-	client, err := clientFromLogin(*vaultAddr, *useToken)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		return 1
-	}
-
-	path := strings.TrimSpace(*vaultPath)
+	path := strings.TrimSpace(vaultPath)
 	if path == "" {
-		path = env.APIPath(*mount)
+		path = env.APIPath("")
 	}
 
 	data, err := vaultkv.ReadKV2(client, path)
@@ -62,12 +30,12 @@ func kubeconfigCommand(args []string) int {
 		return 1
 	}
 
-	ns := strings.TrimSpace(*namespace)
+	ns := strings.TrimSpace(namespace)
 	if ns == "" {
 		ns = strings.TrimSpace(data["namespace"])
 	}
 
-	kubeYAML, err := kube.Materialize(data, strings.TrimSpace(*field), env.Cluster, env.Cluster, env.Cluster, ns)
+	kubeYAML, err := kube.Materialize(data, strings.TrimSpace(field), env.Cluster, env.Cluster, env.Cluster, ns)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kubeconfig: %v\n", err)
 		return 1
@@ -78,7 +46,7 @@ func kubeconfigCommand(args []string) int {
 		return 1
 	}
 
-	out := strings.TrimSpace(*outPath)
+	out := strings.TrimSpace(outPath)
 	if out == "" {
 		out = kube.DefaultPath()
 	}
@@ -90,7 +58,7 @@ func kubeconfigCommand(args []string) int {
 		return 0
 	}
 
-	if *overwrite {
+	if overwrite {
 		if err := kube.WriteFile(out, kubeYAML); err != nil {
 			fmt.Fprintf(os.Stderr, "write file: %v\n", err)
 			return 1
