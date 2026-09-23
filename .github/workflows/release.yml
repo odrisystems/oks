@@ -1,3 +1,8 @@
+# Publishes an oks release when main is pushed.
+# A tag push does not run this job.
+# The next version is the next v1 minor: v1.0.0, then v1.1.0, then v1.2.0.
+# GoReleaser builds the archives. The GitHub Release is created from those files.
+
 name: Release OKS
 
 on:
@@ -11,6 +16,7 @@ permissions:
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -23,25 +29,45 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Create release tag (v0.0.0-nightly.YYYYMMDD.HHMMSS.<sha>)
+      - name: Choose the next minor version
         shell: bash
         run: |
           set -euo pipefail
-          sha="$(git rev-parse --short=12 HEAD)"
-          date_part="$(date -u +%Y%m%d)"
-          time_part="$(date -u +%H%M%S)"
-          tag="v0.0.0-nightly.${date_part}.${time_part}.${sha}"
+          git fetch --tags origin
+          latest="$(git tag -l 'v1.*' | grep -E '^v1\.[0-9]+\.0$' | sort -V | tail -n 1 || true)"
+          if [ -z "${latest}" ]; then
+            tag="v1.0.0"
+          else
+            minor="${latest#v1.}"
+            minor="${minor%.0}"
+            tag="v1.$((minor + 1)).0"
+          fi
           echo "TAG=${tag}" >> "$GITHUB_ENV"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+          echo "Releasing ${tag}"
           git tag "${tag}"
-          git push origin "refs/tags/${tag}"
 
-      - name: Run GoReleaser
+      - name: Build archives
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean
+          args: release --clean --skip=publish,validate,before
+
+      - name: Publish the GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${TAG}" \
+            --target "${GITHUB_SHA}" \
+            --title "oks ${TAG}" \
+            --notes "oks ${TAG}" \
+            "dist/oks_${VERSION}_linux_amd64.tar.gz" \
+            "dist/oks_${VERSION}_linux_arm64.tar.gz" \
+            "dist/oks_${VERSION}_darwin_amd64.tar.gz" \
+            "dist/oks_${VERSION}_darwin_arm64.tar.gz" \
+            "dist/oks_${VERSION}_windows_amd64.zip" \
+            "dist/oks_${VERSION}_windows_arm64.zip" \
+            "dist/checksums.txt"

@@ -7,7 +7,7 @@ before:
 
 builds:
   - id: oks
-    main: .
+    main: ./cmd/oks
     binary: oks
     env:
       - CGO_ENABLED=0

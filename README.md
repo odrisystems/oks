@@ -1,6 +1,17 @@
 # OKS (Odri Kubernetes Service)
 
-`oks` fetches Kubernetes kubeconfig material from HashiCorp Vault and safely merges it into your kubeconfig (similar to `gcloud ... get-credentials`).
+`oks` logs you into Vault in the browser with a username, password, and authenticator code, downloads one cluster kubeconfig, and writes it into your kubeconfig.
+
+## Layout
+
+```
+cmd/oks/            command entrypoint
+internal/cli/       flags and the login-then-write flow
+internal/auth/      Vault userpass browser login
+internal/cluster/   cluster name and clusters/data/<cluster> path
+internal/vaultkv/   Vault client and KV v2 reads
+internal/kube/      merge, overwrite, and kubeconfig assembly
+```
 
 ## Install
 
@@ -13,25 +24,24 @@ curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | b
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | bash -s -- --version v0.0.0-nightly.20260510.120605.acfb8d87a258
+curl -fsSL https://raw.githubusercontent.com/odrisystems/oks/main/install.sh | bash -s -- --version v1.0.0
 ```
 
 ## Usage
 
 Vault secret path defaults to:
 
-- `secret/data/clusters/<cluster>`
+- `clusters/data/<cluster>`
 
 Example:
 
 ```bash
-export VAULT_ADDR="https://vault.example.com"
-export VAULT_TOKEN="..."
-
 oks -cluster kind-odri-cluster -namespace workspacepro-prod
 kubectl config use-context kind-odri-cluster
 kubectl get ns
 ```
+
+Vault address defaults to `https://vault.odrisystems.com`. Browser login uses the `userpass` mount (`-auth userpass`) and asks for the username, password, and authenticator code. Pass `-use-token` to skip the browser and use `VAULT_TOKEN` instead.
 
 ### Vault secret formats
 
@@ -46,8 +56,11 @@ kubectl get ns
 
 ## Releasing
 
-Create a tag like `v0.1.0` and push it. GitHub Actions will publish release assets:
+A push to `main` publishes the next release. Versions step the minor number: `v1.0.0`, then `v1.1.0`, then `v1.2.0`. Pushes of tags do not build a release.
+
+GitHub Actions builds the archives with GoReleaser and creates the GitHub Release:
 
 - `oks_<version>_<os>_<arch>.tar.gz` (linux/darwin)
 - `oks_<version>_<os>_<arch>.zip` (windows)
+- `checksums.txt`
 
